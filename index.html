@@ -84,11 +84,30 @@
     <div id="data-form">
         <h2>🏆 Save Your Score!</h2>
         <div>Final Score: <span id="final-score">0</span> | Grade: <span id="final-grade">8</span></div>
-        <input type="text" id="facebook-username" placeholder="Enter your Facebook username" required>
-        <div style="font-size: 12px; color: #666; margin: 10px 0; line-height: 1.4;">
-            By submitting your score, you agree to allow us to collect and store your Facebook username and game data for leaderboard and promotional purposes.
-        </div>
-        <button class="submit-btn" onclick="submitScore()">SUBMIT SCORE</button>
+        
+        <form name="game-scores" method="POST" data-netlify="true" data-netlify-honeypot="bot-field">
+            <!-- Hidden honeypot field for spam protection -->
+            <input type="hidden" name="bot-field">
+            
+            <!-- Form name for Netlify -->
+            <input type="hidden" name="form-name" value="game-scores">
+            
+            <!-- Hidden fields for game data -->
+            <input type="hidden" name="score" id="hidden-score">
+            <input type="hidden" name="grade" id="hidden-grade">
+            <input type="hidden" name="timestamp" id="hidden-timestamp">
+            <input type="hidden" name="game-session" id="hidden-session">
+            
+            <!-- User input field -->
+            <input type="text" name="facebook-username" id="facebook-username" placeholder="Enter your Facebook username" required>
+            
+            <div style="font-size: 12px; color: #666; margin: 10px 0; line-height: 1.4;">
+                By submitting your score, you agree to allow us to collect and store your Facebook username and game data for leaderboard and promotional purposes.
+            </div>
+            
+            <button type="submit" class="submit-btn">SUBMIT SCORE</button>
+        </form>
+        
         <p style="font-size: 11px; color: #888; margin-top: 10px;">
             Complete this form to save your score and compete on the leaderboard!
         </p>
@@ -353,9 +372,14 @@
             text("Final Score: " + score, width / 2, height / 2 - 20);
             text("Grade Reached: " + level, width / 2, height / 2 + 10);
             
-            // Show form
+            // Show form and populate hidden fields
             document.getElementById('final-score').textContent = score;
             document.getElementById('final-grade').textContent = level;
+            document.getElementById('hidden-score').value = score;
+            document.getElementById('hidden-grade').value = level;
+            document.getElementById('hidden-timestamp').value = new Date().toISOString();
+            document.getElementById('hidden-session').value = Date.now();
+            
             document.getElementById('form-overlay').style.display = 'block';
             document.getElementById('data-form').style.display = 'block';
         }
@@ -455,31 +479,38 @@
             document.getElementById('facebook-username').value = '';
         }
         
+        // Handle form submission
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.querySelector('form[name="game-scores"]');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    const facebookUsername = document.getElementById('facebook-username').value.trim();
+                    
+                    if (!facebookUsername) {
+                        e.preventDefault();
+                        alert('Please enter your Facebook username to save your score!');
+                        return false;
+                    }
+                    
+                    if (facebookUsername.length < 2) {
+                        e.preventDefault();
+                        alert('Please enter a valid Facebook username!');
+                        return false;
+                    }
+                    
+                    // Show loading state
+                    const submitBtn = form.querySelector('.submit-btn');
+                    submitBtn.textContent = 'SUBMITTING...';
+                    submitBtn.disabled = true;
+                    
+                    // Form will submit naturally to Netlify
+                    // User will be redirected to thank you page
+                });
+            }
+        });
+        
         function submitScore() {
-            const facebookUsername = document.getElementById('facebook-username').value.trim();
-            
-            if (!facebookUsername) {
-                alert('Please enter your Facebook username to save your score!');
-                return;
-            }
-            
-            // Validate Facebook username (basic check)
-            if (facebookUsername.length < 2) {
-                alert('Please enter a valid Facebook username!');
-                return;
-            }
-            
-            const gameData = {
-                score: score,
-                grade: level,
-                facebook_username: facebookUsername,
-                timestamp: new Date().toISOString(),
-                game_session: Date.now()
-            };
-            
-            console.log('Data ready for Supabase:', gameData);
-            alert(`Score submitted successfully!\nScore: ${score} | Grade: ${level}\nFacebook: ${facebookUsername}\nThank you for playing!`);
-            restartGame();
+            // This function is no longer needed - form handles submission
         }
         
         function skipAndRestart() {
