@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leamah School Dodge Challenge</title>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        
+        #data-form {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.98);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            display: none;
+            z-index: 30;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 90%;
+            max-width: 400px;
+        }
+        
+        #data-form h2 {
+            color: #333;
+            margin: 0 0 10px 0;
+            font-size: 24px;
+        }
+        
+        #data-form input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        
+        #data-form button {
+            padding: 12px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .submit-btn {
+            background: #4CAF50;
+            color: white;
+            width: 100%;
+        }
+        
+        .submit-btn:hover {
+            background: #45a049;
+        }
+        
+        .form-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 25;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="form-overlay" id="form-overlay"></div>
+    
+    <div id="data-form">
+        <h2>🏆 Save Your Score!</h2>
+        <div>Final Score: <span id="final-score">0</span> | Grade: <span id="final-grade">8</span></div>
+        <input type="text" id="facebook-username" placeholder="Enter your Facebook username" required>
+        <div style="font-size: 12px; color: #666; margin: 10px 0; line-height: 1.4;">
+            By submitting your score, you agree to allow us to collect and store your Facebook username and game data for leaderboard and promotional purposes.
+        </div>
+        <button class="submit-btn" onclick="submitScore()">SUBMIT SCORE</button>
+        <p style="font-size: 11px; color: #888; margin-top: 10px;">
+            Complete this form to save your score and compete on the leaderboard!
+        </p>
+    </div>
+
+    <script>
+        // Game variables
+        let player;
+        let obstacles = [];
+        let powerUps = [];
+        let bullets = [];
+        let score = 0;
+        let level = 8;
+        let gameSpeed = 2;
+        let gameState = "start";
+        let timer;
+        let particles = [];
+        let lives = 2;
+        let bigBooksThisGrade = 0;
+        let lastAutoShoot = 0;
+        let gradeMessage = "";
+        let gradeMessageTimer = 0;
+        let showGradeMessage = false;
+        let isMobile = window.innerWidth < 768;
+        
+        function setup() {
+            let canvas = createCanvas(windowWidth, windowHeight);
+            canvas.parent(document.body);
+            player = new Player();
+            timer = millis();
+            console.log("Game setup complete!");
+        }
+        
+        function draw() {
+            // Clear the canvas properly
+            background(26, 26, 46);
+            
+            // Optional: Add gradient effect
+            for (let i = 0; i <= height; i += 10) {
+                let inter = map(i, 0, height, 0, 1);
+                let c = lerpColor(color(26, 26, 46), color(16, 16, 36), inter);
+                stroke(c);
+                strokeWeight(1);
+                line(0, i, width, i);
+            }
+            
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].show();
+                if (particles[i].isDead()) {
+                    particles.splice(i, 1);
+                }
+            }
+            
+            if (gameState === "start") {
+                showStartScreen();
+            } else if (gameState === "play") {
+                playGame();
+            } else if (gameState === "gameover") {
+                showGameOver();
+            }
+        }
+        
+        function showStartScreen() {
+            // Clear background first
+            background(26, 26, 46);
+            
+            textAlign(CENTER, CENTER);
+            fill(255);
+            noStroke();
+            textSize(min(width * 0.08, 32));
+            text("📚 Leamah School Dodge Challenge", width / 2, height / 2 - 80);
+            
+            textSize(min(width * 0.05, 20));
+            fill(200, 200, 255);
+            text("Grade 8 - 12 Educational Game", width / 2, height / 2 - 40);
+            
+            textSize(min(width * 0.045, 18));
+            fill(150, 255, 150);
+            text("🎯 Dodge desks & chairs", width / 2, height / 2);
+            text("📖 Collect books for points", width / 2, height / 2 + 25);
+            text("🚀 Shoot correct answers", width / 2, height / 2 + 50);
+            
+            fill(255, 100, 100);
+            textSize(min(width * 0.04, 16));
+            text("❤️ You have 2 Lives!", width / 2, height / 2 + 75);
+            
+            let pulse = sin(millis() * 0.01) * 0.5 + 0.5;
+            fill(255, 255, 0, 150 + pulse * 105);
+            textSize(min(width * 0.06, 24));
+            text("TAP TO START!", width / 2, height / 2 + 120);
+        }
+        
+        function playGame() {
+            // Level progression
+            if (millis() - timer > 30000) {
+                level++;
+                gameSpeed = min(2 + (level - 8) * 0.4, 6);
+                timer = millis();
+                bigBooksThisGrade = 0;
+                setGradeMessage(level);
+                
+                for (let i = 0; i < 20; i++) {
+                    particles.push(new Particle(width / 2, height / 2, color(255, 215, 0)));
+                }
+            }
+            
+            // Auto-shoot for mobile
+            if (isMobile && millis() - lastAutoShoot > 500) {
+                let nearbyObstacle = false;
+                for (let obs of obstacles) {
+                    if (obs.x < width * 0.6 && abs(obs.y - player.y) < 60) {
+                        nearbyObstacle = true;
+                        break;
+                    }
+                }
+                if (nearbyObstacle) {
+                    shoot();
+                    lastAutoShoot = millis();
+                }
+            }
+            
+            player.update();
+            player.show();
+            
+            // Spawn obstacles
+            if (random(1) < 0.02 + level * 0.005) {
+                obstacles.push(new Obstacle());
+            }
+            
+            // Spawn power-ups
+            if (random(1) < 0.012) {
+                powerUps.push(new PowerUp());
+            }
+            
+            // Spawn big books
+            if (random(1) < 0.002 && bigBooksThisGrade < 2) {
+                powerUps.push(new PowerUp(true));
+                bigBooksThisGrade++;
+            }
+            
+            // Update obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                obstacles[i].update();
+                obstacles[i].show();
+                
+                if (player.hits(obstacles[i])) {
+                    lives--;
+                    obstacles.splice(i, 1);
+                    
+                    for (let j = 0; j < 15; j++) {
+                        particles.push(new Particle(player.x, player.y, color(255, 100, 100)));
+                    }
+                    
+                    if (lives <= 0) {
+                        gameState = "gameover";
+                    } else {
+                        gradeMessage = `Lives Left: ${lives} ❤️`;
+                        showGradeMessage = true;
+                        gradeMessageTimer = millis();
+                    }
+                    break;
+                }
+                
+                if (obstacles[i] && obstacles[i].offscreen()) {
+                    obstacles.splice(i, 1);
+                }
+            }
+            
+            // Update power-ups
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                powerUps[i].update();
+                powerUps[i].show();
+                
+                if (player.collects(powerUps[i])) {
+                    if (powerUps[i].isBig) {
+                        score += 50;
+                        for (let obs of obstacles) {
+                            for (let j = 0; j < 15; j++) {
+                                particles.push(new Particle(obs.x, obs.y, color(255, 215, 0)));
+                            }
+                        }
+                        obstacles = [];
+                        
+                        for (let j = 0; j < 30; j++) {
+                            particles.push(new Particle(random(width), random(height), color(255, 255, 100)));
+                        }
+                    } else {
+                        score += 10;
+                    }
+                    
+                    for (let j = 0; j < (powerUps[i].isBig ? 20 : 8); j++) {
+                        particles.push(new Particle(powerUps[i].x, powerUps[i].y, 
+                                                  powerUps[i].isBig ? color(255, 215, 0) : color(100, 255, 100)));
+                    }
+                    powerUps.splice(i, 1);
+                }
+            }
+            
+            // Update bullets
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                bullets[i].update();
+                bullets[i].show();
+                
+                let bulletHit = false;
+                for (let j = obstacles.length - 1; j >= 0; j--) {
+                    if (bullets[i] && bullets[i].hits(obstacles[j])) {
+                        for (let k = 0; k < 10; k++) {
+                            particles.push(new Particle(obstacles[j].x, obstacles[j].y, color(255, 150, 0)));
+                        }
+                        obstacles.splice(j, 1);
+                        bulletHit = true;
+                        score += 5;
+                        break;
+                    }
+                }
+                
+                if (bulletHit || bullets[i].offscreen()) {
+                    bullets.splice(i, 1);
+                }
+            }
+            
+            showGameUI();
+            
+            if (showGradeMessage) {
+                showGradeProgressMessage();
+            }
+        }
+        
+        function showGameUI() {
+            fill(0, 0, 0, 150);
+            noStroke();
+            rect(10, 10, min(200, width * 0.4), 100, 10);
+            
+            fill(255);
+            textAlign(LEFT, TOP);
+            textSize(min(width * 0.04, 18));
+            text("📊 Score: " + score, 20, 30);
+            text("🎓 Grade: " + level, 20, 50);
+            text("⚡ Speed: " + gameSpeed.toFixed(1), 20, 70);
+            
+            fill(255, 100, 100);
+            text("❤️ Lives: " + lives, 20, 90);
+        }
+        
+        function showGameOver() {
+            // Clear background first
+            background(26, 26, 46);
+            
+            fill(0, 0, 0, 150);
+            noStroke();
+            rect(0, 0, width, height);
+            
+            textAlign(CENTER, CENTER);
+            fill(255, 100, 100);
+            textSize(min(width * 0.09, 36));
+            text("📚 GAME OVER", width / 2, height / 2 - 60);
+            
+            fill(255);
+            textSize(min(width * 0.06, 24));
+            text("Final Score: " + score, width / 2, height / 2 - 20);
+            text("Grade Reached: " + level, width / 2, height / 2 + 10);
+            
+            // Show form
+            document.getElementById('final-score').textContent = score;
+            document.getElementById('final-grade').textContent = level;
+            document.getElementById('form-overlay').style.display = 'block';
+            document.getElementById('data-form').style.display = 'block';
+        }
+        
+        function setGradeMessage(grade) {
+            const messages = {
+                8: "Let's Go! 🚀",
+                9: "Wena Na? 😎",
+                10: "Eh Eh Eh! 🔥",
+                11: "Inzinja Madoda! 💪",
+                12: "Abashwe! 👑"
+            };
+            
+            gradeMessage = messages[grade] || `Grade ${grade}! 🎓`;
+            showGradeMessage = true;
+            gradeMessageTimer = millis();
+        }
+        
+        function showGradeProgressMessage() {
+            if (millis() - gradeMessageTimer > 3000) {
+                showGradeMessage = false;
+                return;
+            }
+            
+            fill(0, 0, 0, 180);
+            noStroke();
+            rect(0, 0, width, height);
+            
+            let elapsed = millis() - gradeMessageTimer;
+            let fadeIn = min(elapsed / 500, 1);
+            let fadeOut = elapsed > 2500 ? 1 - ((elapsed - 2500) / 500) : 1;
+            let alpha = fadeIn * fadeOut * 255;
+            
+            let pulse = sin(elapsed * 0.01) * 0.3 + 1;
+            
+            textAlign(CENTER, CENTER);
+            fill(255, 215, 0, alpha);
+            textSize(min(width * 0.1, 40) * pulse);
+            text(gradeMessage, width / 2, height / 2);
+            
+            fill(255, 255, 255, alpha);
+            textSize(min(width * 0.06, 24));
+            text(`Grade ${level}`, width / 2, height / 2 + 60);
+        }
+        
+        function mousePressed() {
+            if (gameState === "start") {
+                gameState = "play";
+                timer = millis();
+            }
+        }
+        
+        function touchStarted() {
+            if (gameState === "start") {
+                gameState = "play";
+                timer = millis();
+            }
+            return false;
+        }
+        
+        function keyPressed() {
+            if (key === ' ') {
+                shoot();
+            }
+        }
+        
+        function shoot() {
+            if (gameState === "play") {
+                bullets.push(new Bullet(player.x + player.r, player.y));
+            }
+        }
+        
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+        
+        function restartGame() {
+            gameState = "start";
+            score = 0;
+            level = 8;
+            gameSpeed = 2;
+            lives = 2;
+            obstacles = [];
+            powerUps = [];
+            bullets = [];
+            particles = [];
+            player = new Player();
+            timer = millis();
+            bigBooksThisGrade = 0;
+            lastAutoShoot = 0;
+            gradeMessage = "";
+            gradeMessageTimer = 0;
+            showGradeMessage = false;
+            
+            document.getElementById('form-overlay').style.display = 'none';
+            document.getElementById('data-form').style.display = 'none';
+            document.getElementById('facebook-username').value = '';
+        }
+        
+        function submitScore() {
+            const facebookUsername = document.getElementById('facebook-username').value.trim();
+            
+            if (!facebookUsername) {
+                alert('Please enter your Facebook username to save your score!');
+                return;
+            }
+            
+            // Validate Facebook username (basic check)
+            if (facebookUsername.length < 2) {
+                alert('Please enter a valid Facebook username!');
+                return;
+            }
+            
+            const gameData = {
+                score: score,
+                grade: level,
+                facebook_username: facebookUsername,
+                timestamp: new Date().toISOString(),
+                game_session: Date.now()
+            };
+            
+            console.log('Data ready for Supabase:', gameData);
+            alert(`Score submitted successfully!\nScore: ${score} | Grade: ${level}\nFacebook: ${facebookUsername}\nThank you for playing!`);
+            restartGame();
+        }
+        
+        function skipAndRestart() {
+            // Function removed - no longer needed
+        }
+        
+        // Game Classes
+        class Player {
+            constructor() {
+                this.x = 80;
+                this.y = height / 2;
+                this.r = min(25, width * 0.04);
+                this.targetY = this.y;
+                this.trail = [];
+            }
+            
+            update() {
+                if (keyIsDown(UP_ARROW)) {
+                    this.targetY -= 6;
+                }
+                if (keyIsDown(DOWN_ARROW)) {
+                    this.targetY += 6;
+                }
+                
+                this.y = lerp(this.y, this.targetY, 0.15);
+                this.targetY = constrain(this.targetY, this.r, height - this.r - 50);
+                this.y = constrain(this.y, this.r, height - this.r - 50);
+                
+                this.trail.push({x: this.x, y: this.y});
+                if (this.trail.length > 8) {
+                    this.trail.shift();
+                }
+            }
+            
+            show() {
+                for (let i = 0; i < this.trail.length; i++) {
+                    let alpha = map(i, 0, this.trail.length - 1, 0, 255);
+                    fill(30, 150, 255, alpha);
+                    noStroke();
+                    ellipse(this.trail[i].x, this.trail[i].y, (this.r * 2) * (i / this.trail.length));
+                }
+                
+                fill(30, 150, 255);
+                stroke(255);
+                strokeWeight(2);
+                ellipse(this.x, this.y, this.r * 2);
+                
+                fill(255);
+                noStroke();
+                textAlign(CENTER, CENTER);
+                textSize(this.r * 0.8);
+                text("😊", this.x, this.y);
+            }
+            
+            hits(obj) {
+                let hitDistance = (this.r * 0.7) + (obj.r * 0.7);
+                return dist(this.x, this.y, obj.x, obj.y) < hitDistance;
+            }
+            
+            collects(obj) {
+                let collectDistance = (this.r * 1.2) + (obj.r * 1.2);
+                return dist(this.x, this.y, obj.x, obj.y) < collectDistance;
+            }
+        }
+        
+        class Obstacle {
+            constructor() {
+                this.x = width + 30;
+                this.y = random(30, height - 30);
+                this.r = min(25, width * 0.04);
+                this.speed = gameSpeed;
+                this.type = random() > 0.5 ? 'desk' : 'chair';
+            }
+            
+            update() {
+                this.x -= this.speed;
+            }
+            
+            show() {
+                fill(200, 50, 50);
+                stroke(150, 0, 0);
+                strokeWeight(2);
+                
+                if (this.type === 'desk') {
+                    rect(this.x - this.r, this.y - this.r, this.r * 2, this.r * 2, 5);
+                    fill(255);
+                    noStroke();
+                    textAlign(CENTER, CENTER);
+                    textSize(this.r * 0.6);
+                    text("🏫", this.x, this.y);
+                } else {
+                    ellipse(this.x, this.y, this.r * 2);
+                    fill(255);
+                    noStroke();
+                    textAlign(CENTER, CENTER);
+                    textSize(this.r * 0.6);
+                    text("🪑", this.x, this.y);
+                }
+            }
+            
+            offscreen() {
+                return this.x < -this.r;
+            }
+        }
+        
+        class PowerUp {
+            constructor(isBig = false) {
+                this.x = width + 20;
+                this.y = random(60, height - 60);
+                this.isBig = isBig;
+                this.r = isBig ? min(35, width * 0.06) : min(20, width * 0.035);
+                this.speed = gameSpeed * (isBig ? 0.6 : 0.8);
+                this.pulse = 0;
+            }
+            
+            update() {
+                this.x -= this.speed;
+                this.pulse += 0.1;
+            }
+            
+            show() {
+                let size = this.r * 2 + sin(this.pulse) * (this.isBig ? 12 : 8);
+                
+                if (this.isBig) {
+                    for (let i = 5; i > 0; i--) {
+                        fill(255, 215, 0, 60 - i * 10);
+                        ellipse(this.x, this.y, size + i * 15);
+                    }
+                    
+                    fill(255, 215, 0, 230);
+                    stroke(255, 165, 0);
+                    strokeWeight(3);
+                    ellipse(this.x, this.y, size);
+                    
+                    fill(255);
+                    noStroke();
+                    textAlign(CENTER, CENTER);
+                    textSize(this.r * 0.9);
+                    text("📚", this.x, this.y);
+                    
+                    fill(255, 255, 255);
+                    textSize(this.r * 0.4);
+                    text("CLEAR!", this.x, this.y - this.r * 1.5);
+                } else {
+                    for (let i = 3; i > 0; i--) {
+                        fill(50, 255, 50, 80 - i * 20);
+                        ellipse(this.x, this.y, size + i * 10);
+                    }
+                    
+                    fill(50, 255, 50, 230);
+                    stroke(0, 200, 0);
+                    strokeWeight(2);
+                    ellipse(this.x, this.y, size);
+                    
+                    fill(255);
+                    noStroke();
+                    textAlign(CENTER, CENTER);
+                    textSize(this.r * 0.8);
+                    text("📖", this.x, this.y);
+                }
+            }
+            
+            offscreen() {
+                return this.x < -this.r;
+            }
+        }
+        
+        class Bullet {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.r = min(8, width * 0.015);
+                this.speed = min(10, width * 0.02);
+            }
+            
+            update() {
+                this.x += this.speed;
+            }
+            
+            show() {
+                fill(255, 255, 0);
+                stroke(255, 200, 0);
+                strokeWeight(2);
+                ellipse(this.x, this.y, this.r * 2);
+                
+                fill(0);
+                noStroke();
+                textAlign(CENTER, CENTER);
+                textSize(this.r * 1.2);
+                text("✓", this.x, this.y);
+            }
+            
+            hits(obj) {
+                let hitDistance = this.r + obj.r * 0.8;
+                return dist(this.x, this.y, obj.x, obj.y) < hitDistance;
+            }
+            
+            offscreen() {
+                return this.x > width + this.r;
+            }
+        }
+        
+        class Particle {
+            constructor(x, y, col) {
+                this.x = x;
+                this.y = y;
+                this.vx = random(-3, 3);
+                this.vy = random(-3, 3);
+                this.life = 255;
+                this.color = col;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 5;
+            }
+            
+            show() {
+                fill(red(this.color), green(this.color), blue(this.color), this.life);
+                noStroke();
+                ellipse(this.x, this.y, 8);
+            }
+            
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+    </script>
+</body>
+</html>
