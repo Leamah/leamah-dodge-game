@@ -85,7 +85,7 @@
         <h2>🏆 Save Your Score!</h2>
         <div>Final Score: <span id="final-score">0</span> | Grade: <span id="final-grade">8</span></div>
         
-        <form name="game-scores" method="POST" data-netlify="true" data-netlify-honeypot="bot-field">
+        <form name="game-scores" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" action="/?success=true">
             <!-- Hidden honeypot field for spam protection -->
             <input type="hidden" name="bot-field">
             
@@ -138,6 +138,15 @@
             canvas.parent(document.body);
             player = new Player();
             timer = millis();
+            
+            // Check if user just submitted a score
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('success') === 'true') {
+                showSuccessMessage();
+                // Clean the URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+            
             console.log("Game setup complete!");
         }
         
@@ -513,8 +522,61 @@
             // This function is no longer needed - form handles submission
         }
         
-        function skipAndRestart() {
-            // Function removed - no longer needed
+        function showSuccessMessage() {
+            // Show success overlay
+            document.getElementById('form-overlay').style.display = 'block';
+            
+            // Create success message
+            const successDiv = document.createElement('div');
+            successDiv.innerHTML = `
+                <div style="
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background: rgba(76, 175, 80, 0.95);
+                    padding: 40px;
+                    border-radius: 15px;
+                    text-align: center;
+                    color: white;
+                    z-index: 35;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                    max-width: 400px;
+                    width: 90%;
+                ">
+                    <h2 style="margin: 0 0 20px 0;">🏆 Score Submitted Successfully!</h2>
+                    <p style="margin: 0 0 15px 0; font-size: 18px;">Thank you for playing Leamah School Dodge Challenge!</p>
+                    <p style="margin: 0 0 25px 0;">Your score has been recorded and you're now on the leaderboard.</p>
+                    <button onclick="restartFromSuccess()" style="
+                        background: white;
+                        color: #4CAF50;
+                        padding: 15px 30px;
+                        border: none;
+                        border-radius: 8px;
+                        font-size: 18px;
+                        font-weight: bold;
+                        cursor: pointer;
+                    ">🎮 PLAY AGAIN</button>
+                </div>
+            `;
+            document.body.appendChild(successDiv);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                restartFromSuccess();
+            }, 5000);
+        }
+        
+        function restartFromSuccess() {
+            // Remove success message
+            const successDiv = document.querySelector('div[style*="rgba(76, 175, 80"]');
+            if (successDiv) {
+                successDiv.remove();
+            }
+            
+            // Hide overlay and restart game
+            document.getElementById('form-overlay').style.display = 'none';
+            restartGame();
         }
         
         // Game Classes
