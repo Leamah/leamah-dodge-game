@@ -78,10 +78,17 @@
             background: #4CAF50;
             color: white;
             width: 100%;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
         
         .submit-btn:hover {
             background: #45a049;
+        }
+        
+        .submit-btn:active {
+            background: #388e3c;
+            transform: scale(0.98);
         }
         
         .submit-btn:disabled {
@@ -173,7 +180,7 @@
                 By submitting your score, you agree to allow us to collect and store your Facebook username and game data for leaderboard and promotional purposes.
             </div>
             
-            <button type="submit" class="submit-btn">SUBMIT SCORE</button>
+            <button type="button" class="submit-btn" onclick="submitScore()">SUBMIT SCORE</button>
         </form>
         
         <p style="font-size: 11px; color: #888; margin-top: 10px;">
@@ -643,10 +650,60 @@
             loop();
         }
         
+        // Global submit function for mobile compatibility
+        async function submitScore() {
+            const facebookUsername = document.getElementById('facebook-username').value.trim();
+            const submitBtn = document.querySelector('.submit-btn');
+            
+            if (!facebookUsername) {
+                alert('Please enter your Facebook username to save your score!');
+                return false;
+            }
+            
+            if (facebookUsername.length < 2) {
+                alert('Please enter a valid Facebook username!');
+                return false;
+            }
+            
+            // Show loading state
+            submitBtn.textContent = 'SUBMITTING...';
+            submitBtn.disabled = true;
+            
+            // Create form data
+            const formData = new FormData();
+            formData.append('form-name', 'game-scores');
+            formData.append('facebook-username', facebookUsername);
+            formData.append('score', score);
+            formData.append('grade', level);
+            formData.append('timestamp', new Date().toISOString());
+            formData.append('game-session', Date.now());
+            
+            try {
+                // Submit to Netlify
+                const response = await fetch('/', {
+                    method: 'POST',
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: new URLSearchParams(formData).toString()
+                });
+                
+                if (response.ok) {
+                    showSuccessMessage();
+                } else {
+                    throw new Error('Submission failed');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('There was an error submitting your score. Please try again.');
+                submitBtn.textContent = 'SUBMIT SCORE';
+                submitBtn.disabled = false;
+            }
+        }
+        
         // Handle form submission with JavaScript
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('score-form');
             const input = document.getElementById('facebook-username');
+            const submitBtn = document.querySelector('.submit-btn');
             
             // Prevent canvas from stealing focus
             if (input) {
@@ -675,9 +732,35 @@
                 });
             }
             
+            // Handle submit button touches
+            if (submitBtn) {
+                submitBtn.addEventListener('touchstart', function(e) {
+                    e.stopPropagation();
+                });
+                
+                submitBtn.addEventListener('touchend', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Trigger form submission
+                    if (form) {
+                        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                    }
+                });
+                
+                submitBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                });
+            }
+            
             if (form) {
+                // Prevent default touch handling on form
+                form.addEventListener('touchstart', function(e) {
+                    e.stopPropagation();
+                });
+                
                 form.addEventListener('submit', async function(e) {
                     e.preventDefault();
+                    e.stopPropagation();
                     
                     const facebookUsername = document.getElementById('facebook-username').value.trim();
                     
@@ -692,7 +775,6 @@
                     }
                     
                     // Show loading state
-                    const submitBtn = form.querySelector('.submit-btn');
                     submitBtn.textContent = 'SUBMITTING...';
                     submitBtn.disabled = true;
                     
