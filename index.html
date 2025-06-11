@@ -128,13 +128,19 @@
         <div>Final Score: <span id="final-score">0</span> | Grade: <span id="final-grade">8</span></div>
         
         <form name="game-scores" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" action="/?success=true">
+            <!-- Hidden honeypot field for spam protection -->
             <input type="hidden" name="bot-field">
+            
+            <!-- Form name for Netlify -->
             <input type="hidden" name="form-name" value="game-scores">
+            
+            <!-- Hidden fields for game data -->
             <input type="hidden" name="score" id="hidden-score">
             <input type="hidden" name="grade" id="hidden-grade">
             <input type="hidden" name="timestamp" id="hidden-timestamp">
             <input type="hidden" name="game-session" id="hidden-session">
             
+            <!-- User input field -->
             <input type="text" name="facebook-username" id="facebook-username" placeholder="Enter your Facebook username" required>
             
             <div style="font-size: 12px; color: #666; margin: 10px 0; line-height: 1.4;">
@@ -619,9 +625,13 @@
                         return false;
                     }
                     
+                    // Show loading state
                     const submitBtn = form.querySelector('.submit-btn');
                     submitBtn.textContent = 'SUBMITTING...';
                     submitBtn.disabled = true;
+                    
+                    // Form will submit naturally to Netlify
+                    // User will be redirected to thank you page
                 });
             }
         });
