@@ -220,6 +220,8 @@
         let touchStartY = null;
         let lastShootTime = 0;
         let particleLimit = 20;
+        let finalBoss = null;
+        let bossProjectiles = [];
         
         function setup() {
             let canvas = createCanvas(windowWidth, windowHeight);
@@ -342,13 +344,21 @@
         }
         
         function playGame() {
-            // Level progression
-            if (millis() - timer > 30000) {
+            // Level progression (cap at grade 12)
+            if (millis() - timer > 30000 && level < 12) {
                 level++;
-                gameSpeed = min(2 + (level - 8) * 0.4, 6);
+                gameSpeed = min(2 + (level - 8) * 0.5, 6);
                 timer = millis();
                 bigBooksThisGrade = 0;
                 setGradeMessage(level);
+                
+                // Spawn boss at grade 12
+                if (level === 12 && !finalBoss) {
+                    finalBoss = new FinalBoss();
+                    gradeMessage = "FINAL BOSS! 👹";
+                    showGradeMessage = true;
+                    gradeMessageTimer = millis();
+                }
                 
                 // Fewer particles on mobile
                 let particleCount = isMobile ? 10 : 20;
@@ -366,13 +376,61 @@
                         break;
                     }
                 }
+                // Also auto-shoot at boss
+                if (finalBoss && finalBoss.x < width * 0.7) {
+                    shoot();
+                    lastAutoShoot = millis();
+                }
             }
             
             player.update();
             player.show();
             
-            // Spawn obstacles
-            let spawnChance = isMobile ? 0.015 : 0.02;
+            // Update and show final boss
+            if (finalBoss) {
+                finalBoss.update();
+                finalBoss.show();
+                
+                // Check if player hits boss
+                if (player.hits(finalBoss)) {
+                    lives = 0;
+                    gameState = "gameover";
+                    
+                    let particleCount = isMobile ? 20 : 40;
+                    for (let j = 0; j < particleCount; j++) {
+                        addParticle(player.x, player.y, color(255, 100, 100));
+                    }
+                }
+            }
+            
+            // Update boss projectiles
+            for (let i = bossProjectiles.length - 1; i >= 0; i--) {
+                bossProjectiles[i].update();
+                bossProjectiles[i].show();
+                
+                if (player.hits(bossProjectiles[i])) {
+                    lives--;
+                    bossProjectiles.splice(i, 1);
+                    
+                    let particleCount = isMobile ? 8 : 15;
+                    for (let j = 0; j < particleCount; j++) {
+                        addParticle(player.x, player.y, color(255, 100, 100));
+                    }
+                    
+                    if (lives <= 0) {
+                        gameState = "gameover";
+                    } else {
+                        gradeMessage = `Lives Left: ${lives} ❤️`;
+                        showGradeMessage = true;
+                        gradeMessageTimer = millis();
+                    }
+                } else if (bossProjectiles[i] && bossProjectiles[i].offscreen()) {
+                    bossProjectiles.splice(i, 1);
+                }
+            }
+            
+            // Spawn obstacles (less if boss is present)
+            let spawnChance = finalBoss ? 0.008 : (isMobile ? 0.015 : 0.02);
             if (random(1) < spawnChance + level * 0.005) {
                 obstacles.push(new Obstacle());
             }
@@ -433,6 +491,7 @@
                             }
                         }
                         obstacles = [];
+                        bossProjectiles = []; // Clear boss projectiles too
                         
                         let particleCount = isMobile ? 15 : 30;
                         for (let j = 0; j < particleCount; j++) {
@@ -457,6 +516,35 @@
                 bullets[i].show();
                 
                 let bulletHit = false;
+                
+                // Check hits on boss
+                if (finalBoss && bullets[i] && bullets[i].hits(finalBoss)) {
+                    finalBoss.takeDamage();
+                    bulletHit = true;
+                    
+                    let particleCount = isMobile ? 5 : 10;
+                    for (let k = 0; k < particleCount; k++) {
+                        addParticle(finalBoss.x, finalBoss.y, color(255, 150, 0));
+                    }
+                    
+                    if (finalBoss.health <= 0) {
+                        // Boss defeated!
+                        score += 500;
+                        finalBoss = null;
+                        
+                        gradeMessage = "BOSS DEFEATED! 🎉";
+                        showGradeMessage = true;
+                        gradeMessageTimer = millis();
+                        
+                        // Epic explosion
+                        let particleCount = isMobile ? 30 : 60;
+                        for (let j = 0; j < particleCount; j++) {
+                            addParticle(width * 0.7, height / 2, color(random(200, 255), random(100, 255), 0));
+                        }
+                    }
+                }
+                
+                // Check hits on obstacles
                 for (let j = obstacles.length - 1; j >= 0; j--) {
                     if (bullets[i] && bullets[i].hits(obstacles[j])) {
                         let particleCount = isMobile ? 5 : 10;
@@ -470,7 +558,7 @@
                     }
                 }
                 
-                if (bulletHit || bullets[i].offscreen()) {
+                if (bulletHit || (bullets[i] && bullets[i].offscreen())) {
                     bullets.splice(i, 1);
                 }
             }
@@ -641,6 +729,8 @@
             gradeMessage = "";
             gradeMessageTimer = 0;
             showGradeMessage = false;
+            finalBoss = null;
+            bossProjectiles = [];
             
             document.getElementById('form-overlay').style.display = 'none';
             document.getElementById('data-form').style.display = 'none';
@@ -1102,6 +1192,150 @@
             
             isDead() {
                 return this.life <= 0;
+            }
+        }
+        
+        class FinalBoss {
+            constructor() {
+                this.x = width + 100;
+                this.y = height / 2;
+                this.targetY = height / 2;
+                this.r = min(60, width * 0.1);
+                this.health = isMobile ? 25 : 30; // Slightly easier on mobile
+                this.maxHealth = this.health;
+                this.speed = 1.5;
+                this.movePattern = 0;
+                this.lastShoot = 0;
+                this.shootInterval = isMobile ? 1500 : 1200;
+                this.pulse = 0;
+            }
+            
+            update() {
+                // Move to position
+                if (this.x > width * 0.7) {
+                    this.x -= this.speed;
+                } else {
+                    // Vertical movement pattern
+                    this.movePattern += 0.02;
+                    this.targetY = height / 2 + sin(this.movePattern) * (height * 0.3);
+                    this.y = lerp(this.y, this.targetY, 0.05);
+                    
+                    // Shoot projectiles
+                    if (millis() - this.lastShoot > this.shootInterval) {
+                        this.shoot();
+                        this.lastShoot = millis();
+                    }
+                }
+                
+                this.pulse += 0.05;
+            }
+            
+            shoot() {
+                // Triple shot pattern
+                let angles = [-0.2, 0, 0.2];
+                for (let angle of angles) {
+                    bossProjectiles.push(new BossProjectile(this.x - this.r, this.y, angle));
+                }
+                
+                // Sometimes shoot a spread
+                if (random(1) < 0.3) {
+                    for (let i = -2; i <= 2; i++) {
+                        bossProjectiles.push(new BossProjectile(this.x - this.r, this.y, i * 0.15));
+                    }
+                }
+            }
+            
+            show() {
+                // Boss glow effect
+                let glowSize = this.r * 2.5 + sin(this.pulse) * 20;
+                fill(150, 0, 200, 30);
+                noStroke();
+                ellipse(this.x, this.y, glowSize);
+                
+                // Boss body
+                fill(100, 0, 150);
+                stroke(200, 0, 255);
+                strokeWeight(4);
+                ellipse(this.x, this.y, this.r * 2);
+                
+                // Boss face
+                fill(255);
+                noStroke();
+                textAlign(CENTER, CENTER);
+                textSize(this.r * 0.8);
+                text("👹", this.x, this.y);
+                
+                // Health bar
+                let barWidth = this.r * 2;
+                let barHeight = 10;
+                let barY = this.y - this.r - 20;
+                
+                // Health bar background
+                fill(50, 0, 0);
+                rect(this.x - barWidth/2, barY, barWidth, barHeight, 5);
+                
+                // Health bar fill
+                let healthPercent = this.health / this.maxHealth;
+                fill(255 * (1 - healthPercent), 255 * healthPercent, 0);
+                rect(this.x - barWidth/2, barY, barWidth * healthPercent, barHeight, 5);
+                
+                // Boss title
+                fill(255, 200, 0);
+                textSize(min(width * 0.03, 14));
+                text("PRINCIPAL BOSS", this.x, barY - 15);
+            }
+            
+            takeDamage() {
+                this.health--;
+                
+                // Flash effect
+                for (let i = 0; i < 3; i++) {
+                    addParticle(this.x + random(-this.r, this.r), 
+                               this.y + random(-this.r, this.r), 
+                               color(255, 100, 255));
+                }
+            }
+        }
+        
+        class BossProjectile {
+            constructor(x, y, angle) {
+                this.x = x;
+                this.y = y;
+                this.r = min(12, width * 0.02);
+                this.speed = min(5, width * 0.01);
+                this.angle = angle;
+                this.vx = -this.speed * cos(angle);
+                this.vy = this.speed * sin(angle);
+                this.rotation = 0;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.rotation += 0.2;
+            }
+            
+            show() {
+                push();
+                translate(this.x, this.y);
+                rotate(this.rotation);
+                
+                // Projectile glow
+                fill(255, 0, 100, 100);
+                noStroke();
+                ellipse(0, 0, this.r * 3);
+                
+                // Projectile body
+                fill(255, 0, 100);
+                stroke(255, 100, 150);
+                strokeWeight(2);
+                rect(-this.r/2, -this.r/2, this.r, this.r, 3);
+                
+                pop();
+            }
+            
+            offscreen() {
+                return this.x < -this.r || this.y < -this.r || this.y > height + this.r;
             }
         }
     </script>
