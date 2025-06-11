@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>Leamah School Challenge</title>
+    <title>Leamah School Dodge Challenge</title>
     <script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.min.js"></script>
     <style>
         body {
@@ -53,6 +53,15 @@
             border-radius: 8px;
             font-size: 16px;
             box-sizing: border-box;
+            -webkit-appearance: none;
+            appearance: none;
+            touch-action: manipulation;
+        }
+        
+        #data-form input:focus {
+            outline: none;
+            border-color: #4CAF50;
+            transform: scale(1);
         }
         
         #data-form button {
@@ -148,8 +157,17 @@
         <div>Final Score: <span id="final-score">0</span> | Grade: <span id="final-grade">8</span></div>
         
         <form id="score-form">
-            <!-- User input field -->
-            <input type="text" name="facebook-username" id="facebook-username" placeholder="Enter your Facebook username" required>
+            <!-- User input field with mobile-specific attributes -->
+            <input type="text" 
+                   name="facebook-username" 
+                   id="facebook-username" 
+                   placeholder="Enter your Facebook username" 
+                   required
+                   autocomplete="off"
+                   autocorrect="off"
+                   autocapitalize="none"
+                   spellcheck="false"
+                   inputmode="text">
             
             <div style="font-size: 12px; color: #666; margin: 10px 0; line-height: 1.4;">
                 By submitting your score, you agree to allow us to collect and store your Facebook username and game data for leaderboard and promotional purposes.
@@ -502,6 +520,25 @@
             
             document.getElementById('form-overlay').style.display = 'block';
             document.getElementById('data-form').style.display = 'block';
+            
+            // Stop the game loop to prevent interference
+            noLoop();
+            
+            // Focus on input after a short delay (important for mobile)
+            setTimeout(() => {
+                const input = document.getElementById('facebook-username');
+                if (input) {
+                    input.focus();
+                    // For iOS devices
+                    if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+                        input.setAttribute('readonly', 'readonly');
+                        setTimeout(() => {
+                            input.removeAttribute('readonly');
+                            input.focus();
+                        }, 100);
+                    }
+                }
+            }, 300);
         }
         
         function setGradeMessage(grade) {
@@ -601,11 +638,43 @@
             document.getElementById('form-overlay').style.display = 'none';
             document.getElementById('data-form').style.display = 'none';
             document.getElementById('facebook-username').value = '';
+            
+            // Resume the game loop
+            loop();
         }
         
         // Handle form submission with JavaScript
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('score-form');
+            const input = document.getElementById('facebook-username');
+            
+            // Prevent canvas from stealing focus
+            if (input) {
+                input.addEventListener('touchstart', function(e) {
+                    e.stopPropagation();
+                });
+                
+                input.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    this.focus();
+                });
+                
+                // Ensure keyboard shows on mobile
+                input.addEventListener('focus', function() {
+                    if (isMobile) {
+                        document.body.style.position = 'fixed';
+                        document.body.style.width = '100%';
+                    }
+                });
+                
+                input.addEventListener('blur', function() {
+                    if (isMobile) {
+                        document.body.style.position = '';
+                        document.body.style.width = '';
+                    }
+                });
+            }
+            
             if (form) {
                 form.addEventListener('submit', async function(e) {
                     e.preventDefault();
