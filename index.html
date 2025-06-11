@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>Leamah School Dodge Challenge</title>
     <script src="https://cdn.jsdelivr.net/npm/p5@1.4.0/lib/p5.min.js"></script>
     <style>
@@ -12,6 +12,10 @@
             background: #1a1a2e;
             font-family: Arial, sans-serif;
             overflow: hidden;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
         
         #data-form {
@@ -76,6 +80,44 @@
             z-index: 25;
             display: none;
         }
+        
+        #mobile-controls {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 150px;
+            display: none;
+            z-index: 20;
+            pointer-events: none;
+        }
+        
+        .control-zone {
+            position: absolute;
+            width: 50%;
+            height: 100%;
+            pointer-events: auto;
+        }
+        
+        #move-zone {
+            left: 0;
+            background: rgba(30, 150, 255, 0.1);
+        }
+        
+        #shoot-zone {
+            right: 0;
+            background: rgba(255, 255, 0, 0.1);
+        }
+        
+        .control-label {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 20px;
+            color: rgba(255, 255, 255, 0.3);
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -86,19 +128,13 @@
         <div>Final Score: <span id="final-score">0</span> | Grade: <span id="final-grade">8</span></div>
         
         <form name="game-scores" method="POST" data-netlify="true" data-netlify-honeypot="bot-field" action="/?success=true">
-            <!-- Hidden honeypot field for spam protection -->
             <input type="hidden" name="bot-field">
-            
-            <!-- Form name for Netlify -->
             <input type="hidden" name="form-name" value="game-scores">
-            
-            <!-- Hidden fields for game data -->
             <input type="hidden" name="score" id="hidden-score">
             <input type="hidden" name="grade" id="hidden-grade">
             <input type="hidden" name="timestamp" id="hidden-timestamp">
             <input type="hidden" name="game-session" id="hidden-session">
             
-            <!-- User input field -->
             <input type="text" name="facebook-username" id="facebook-username" placeholder="Enter your Facebook username" required>
             
             <div style="font-size: 12px; color: #666; margin: 10px 0; line-height: 1.4;">
@@ -111,6 +147,15 @@
         <p style="font-size: 11px; color: #888; margin-top: 10px;">
             Complete this form to save your score and compete on the leaderboard!
         </p>
+    </div>
+    
+    <div id="mobile-controls">
+        <div id="move-zone" class="control-zone">
+            <div class="control-label">MOVE</div>
+        </div>
+        <div id="shoot-zone" class="control-zone">
+            <div class="control-label">SHOOT</div>
+        </div>
     </div>
 
     <script>
@@ -131,7 +176,11 @@
         let gradeMessage = "";
         let gradeMessageTimer = 0;
         let showGradeMessage = false;
-        let isMobile = window.innerWidth < 768;
+        let isMobile = false;
+        let touchY = null;
+        let touchStartY = null;
+        let lastShootTime = 0;
+        let particleLimit = 20; // Reduced for mobile performance
         
         function setup() {
             let canvas = createCanvas(windowWidth, windowHeight);
@@ -139,31 +188,76 @@
             player = new Player();
             timer = millis();
             
+            // Better mobile detection
+            isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                       (window.innerWidth < 768 && 'ontouchstart' in window);
+            
+            if (isMobile) {
+                particleLimit = 10; // Even fewer particles on mobile
+                document.getElementById('mobile-controls').style.display = 'block';
+                setupMobileControls();
+            }
+            
             // Check if user just submitted a score
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('success') === 'true') {
                 showSuccessMessage();
-                // Clean the URL
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
             
-            console.log("Game setup complete!");
+            console.log("Game setup complete! Mobile:", isMobile);
+        }
+        
+        function setupMobileControls() {
+            const moveZone = document.getElementById('move-zone');
+            const shootZone = document.getElementById('shoot-zone');
+            
+            // Move controls
+            moveZone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                touchStartY = touch.clientY;
+                touchY = touch.clientY;
+            });
+            
+            moveZone.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                touchY = touch.clientY;
+            });
+            
+            moveZone.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                touchY = null;
+                touchStartY = null;
+            });
+            
+            // Shoot controls
+            shootZone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (gameState === "play") {
+                    shoot();
+                }
+            });
         }
         
         function draw() {
-            // Clear the canvas properly
-            background(26, 26, 46);
-            
-            // Optional: Add gradient effect
-            for (let i = 0; i <= height; i += 10) {
-                let inter = map(i, 0, height, 0, 1);
-                let c = lerpColor(color(26, 26, 46), color(16, 16, 36), inter);
-                stroke(c);
-                strokeWeight(1);
-                line(0, i, width, i);
+            // Simplified background for mobile
+            if (isMobile) {
+                background(26, 26, 46);
+            } else {
+                background(26, 26, 46);
+                // Gradient effect only on desktop
+                for (let i = 0; i <= height; i += 20) {
+                    let inter = map(i, 0, height, 0, 1);
+                    let c = lerpColor(color(26, 26, 46), color(16, 16, 36), inter);
+                    stroke(c);
+                    strokeWeight(1);
+                    line(0, i, width, i);
+                }
             }
             
-            // Update particles
+            // Update particles with limit
             for (let i = particles.length - 1; i >= 0; i--) {
                 particles[i].update();
                 particles[i].show();
@@ -182,7 +276,6 @@
         }
         
         function showStartScreen() {
-            // Clear background first
             background(26, 26, 46);
             
             textAlign(CENTER, CENTER);
@@ -199,7 +292,12 @@
             fill(150, 255, 150);
             text("🎯 Dodge desks & chairs", width / 2, height / 2);
             text("📖 Collect books for points", width / 2, height / 2 + 25);
-            text("🚀 Shoot correct answers", width / 2, height / 2 + 50);
+            
+            if (isMobile) {
+                text("📱 Left side: Move | Right side: Shoot", width / 2, height / 2 + 50);
+            } else {
+                text("🚀 Shoot correct answers", width / 2, height / 2 + 50);
+            }
             
             fill(255, 100, 100);
             textSize(min(width * 0.04, 16));
@@ -220,31 +318,30 @@
                 bigBooksThisGrade = 0;
                 setGradeMessage(level);
                 
-                for (let i = 0; i < 20; i++) {
-                    particles.push(new Particle(width / 2, height / 2, color(255, 215, 0)));
+                // Fewer particles on mobile
+                let particleCount = isMobile ? 10 : 20;
+                for (let i = 0; i < particleCount; i++) {
+                    addParticle(width / 2, height / 2, color(255, 215, 0));
                 }
             }
             
-            // Auto-shoot for mobile
-            if (isMobile && millis() - lastAutoShoot > 500) {
-                let nearbyObstacle = false;
+            // Better auto-shoot for mobile
+            if (isMobile && millis() - lastAutoShoot > 200) { // Faster auto-shoot
                 for (let obs of obstacles) {
-                    if (obs.x < width * 0.6 && abs(obs.y - player.y) < 60) {
-                        nearbyObstacle = true;
+                    if (obs.x < width * 0.4 && abs(obs.y - player.y) < 80) {
+                        shoot();
+                        lastAutoShoot = millis();
                         break;
                     }
-                }
-                if (nearbyObstacle) {
-                    shoot();
-                    lastAutoShoot = millis();
                 }
             }
             
             player.update();
             player.show();
             
-            // Spawn obstacles
-            if (random(1) < 0.02 + level * 0.005) {
+            // Spawn obstacles (less frequently on mobile)
+            let spawnChance = isMobile ? 0.015 : 0.02;
+            if (random(1) < spawnChance + level * 0.005) {
                 obstacles.push(new Obstacle());
             }
             
@@ -268,8 +365,9 @@
                     lives--;
                     obstacles.splice(i, 1);
                     
-                    for (let j = 0; j < 15; j++) {
-                        particles.push(new Particle(player.x, player.y, color(255, 100, 100)));
+                    let particleCount = isMobile ? 8 : 15;
+                    for (let j = 0; j < particleCount; j++) {
+                        addParticle(player.x, player.y, color(255, 100, 100));
                     }
                     
                     if (lives <= 0) {
@@ -295,23 +393,27 @@
                 if (player.collects(powerUps[i])) {
                     if (powerUps[i].isBig) {
                         score += 50;
+                        // Clear screen effect with fewer particles
                         for (let obs of obstacles) {
-                            for (let j = 0; j < 15; j++) {
-                                particles.push(new Particle(obs.x, obs.y, color(255, 215, 0)));
+                            let particleCount = isMobile ? 5 : 15;
+                            for (let j = 0; j < particleCount; j++) {
+                                addParticle(obs.x, obs.y, color(255, 215, 0));
                             }
                         }
                         obstacles = [];
                         
-                        for (let j = 0; j < 30; j++) {
-                            particles.push(new Particle(random(width), random(height), color(255, 255, 100)));
+                        let particleCount = isMobile ? 15 : 30;
+                        for (let j = 0; j < particleCount; j++) {
+                            addParticle(random(width), random(height), color(255, 255, 100));
                         }
                     } else {
                         score += 10;
                     }
                     
-                    for (let j = 0; j < (powerUps[i].isBig ? 20 : 8); j++) {
-                        particles.push(new Particle(powerUps[i].x, powerUps[i].y, 
-                                                  powerUps[i].isBig ? color(255, 215, 0) : color(100, 255, 100)));
+                    let particleCount = powerUps[i].isBig ? (isMobile ? 10 : 20) : (isMobile ? 4 : 8);
+                    for (let j = 0; j < particleCount; j++) {
+                        addParticle(powerUps[i].x, powerUps[i].y, 
+                                  powerUps[i].isBig ? color(255, 215, 0) : color(100, 255, 100));
                     }
                     powerUps.splice(i, 1);
                 }
@@ -325,8 +427,9 @@
                 let bulletHit = false;
                 for (let j = obstacles.length - 1; j >= 0; j--) {
                     if (bullets[i] && bullets[i].hits(obstacles[j])) {
-                        for (let k = 0; k < 10; k++) {
-                            particles.push(new Particle(obstacles[j].x, obstacles[j].y, color(255, 150, 0)));
+                        let particleCount = isMobile ? 5 : 10;
+                        for (let k = 0; k < particleCount; k++) {
+                            addParticle(obstacles[j].x, obstacles[j].y, color(255, 150, 0));
                         }
                         obstacles.splice(j, 1);
                         bulletHit = true;
@@ -347,6 +450,12 @@
             }
         }
         
+        function addParticle(x, y, col) {
+            if (particles.length < particleLimit) {
+                particles.push(new Particle(x, y, col));
+            }
+        }
+        
         function showGameUI() {
             fill(0, 0, 0, 150);
             noStroke();
@@ -364,7 +473,6 @@
         }
         
         function showGameOver() {
-            // Clear background first
             background(26, 26, 46);
             
             fill(0, 0, 0, 150);
@@ -381,7 +489,7 @@
             text("Final Score: " + score, width / 2, height / 2 - 20);
             text("Grade Reached: " + level, width / 2, height / 2 + 10);
             
-            // Show form and populate hidden fields
+            // Show form
             document.getElementById('final-score').textContent = score;
             document.getElementById('final-grade').textContent = level;
             document.getElementById('hidden-score').value = score;
@@ -457,7 +565,11 @@
         
         function shoot() {
             if (gameState === "play") {
-                bullets.push(new Bullet(player.x + player.r, player.y));
+                // Limit shooting rate
+                if (millis() - lastShootTime > 100) {
+                    bullets.push(new Bullet(player.x + player.r, player.y));
+                    lastShootTime = millis();
+                }
             }
         }
         
@@ -507,26 +619,16 @@
                         return false;
                     }
                     
-                    // Show loading state
                     const submitBtn = form.querySelector('.submit-btn');
                     submitBtn.textContent = 'SUBMITTING...';
                     submitBtn.disabled = true;
-                    
-                    // Form will submit naturally to Netlify
-                    // User will be redirected to thank you page
                 });
             }
         });
         
-        function submitScore() {
-            // This function is no longer needed - form handles submission
-        }
-        
         function showSuccessMessage() {
-            // Show success overlay
             document.getElementById('form-overlay').style.display = 'block';
             
-            // Create success message
             const successDiv = document.createElement('div');
             successDiv.innerHTML = `
                 <div style="
@@ -561,20 +663,17 @@
             `;
             document.body.appendChild(successDiv);
             
-            // Auto-remove after 5 seconds
             setTimeout(() => {
                 restartFromSuccess();
             }, 5000);
         }
         
         function restartFromSuccess() {
-            // Remove success message
             const successDiv = document.querySelector('div[style*="rgba(76, 175, 80"]');
-            if (successDiv) {
-                successDiv.remove();
+            if (successDiv && successDiv.parentNode) {
+                successDiv.parentNode.removeChild(successDiv);
             }
             
-            // Hide overlay and restart game
             document.getElementById('form-overlay').style.display = 'none';
             restartGame();
         }
@@ -586,33 +685,47 @@
                 this.y = height / 2;
                 this.r = min(25, width * 0.04);
                 this.targetY = this.y;
-                this.trail = [];
+                this.trail = isMobile ? [] : []; // Disable trail on mobile for performance
+                this.speed = isMobile ? 8 : 6; // Faster movement on mobile
             }
             
             update() {
+                // Keyboard controls
                 if (keyIsDown(UP_ARROW)) {
-                    this.targetY -= 6;
+                    this.targetY -= this.speed;
                 }
                 if (keyIsDown(DOWN_ARROW)) {
-                    this.targetY += 6;
+                    this.targetY += this.speed;
                 }
                 
-                this.y = lerp(this.y, this.targetY, 0.15);
-                this.targetY = constrain(this.targetY, this.r, height - this.r - 50);
-                this.y = constrain(this.y, this.r, height - this.r - 50);
+                // Mobile touch controls
+                if (isMobile && touchY !== null && touchStartY !== null) {
+                    let delta = (touchStartY - touchY) * 0.5; // Touch sensitivity
+                    this.targetY = this.y - delta;
+                }
                 
-                this.trail.push({x: this.x, y: this.y});
-                if (this.trail.length > 8) {
-                    this.trail.shift();
+                this.y = lerp(this.y, this.targetY, 0.2); // Smoother lerp for mobile
+                this.targetY = constrain(this.targetY, this.r, height - this.r - (isMobile ? 150 : 50));
+                this.y = constrain(this.y, this.r, height - this.r - (isMobile ? 150 : 50));
+                
+                // Only show trail on desktop
+                if (!isMobile) {
+                    this.trail.push({x: this.x, y: this.y});
+                    if (this.trail.length > 8) {
+                        this.trail.shift();
+                    }
                 }
             }
             
             show() {
-                for (let i = 0; i < this.trail.length; i++) {
-                    let alpha = map(i, 0, this.trail.length - 1, 0, 255);
-                    fill(30, 150, 255, alpha);
-                    noStroke();
-                    ellipse(this.trail[i].x, this.trail[i].y, (this.r * 2) * (i / this.trail.length));
+                // Trail only on desktop
+                if (!isMobile) {
+                    for (let i = 0; i < this.trail.length; i++) {
+                        let alpha = map(i, 0, this.trail.length - 1, 0, 255);
+                        fill(30, 150, 255, alpha);
+                        noStroke();
+                        ellipse(this.trail[i].x, this.trail[i].y, (this.r * 2) * (i / this.trail.length));
+                    }
                 }
                 
                 fill(30, 150, 255);
@@ -641,7 +754,7 @@
         class Obstacle {
             constructor() {
                 this.x = width + 30;
-                this.y = random(30, height - 30);
+                this.y = random(30, height - (isMobile ? 180 : 30));
                 this.r = min(25, width * 0.04);
                 this.speed = gameSpeed;
                 this.type = random() > 0.5 ? 'desk' : 'chair';
@@ -681,7 +794,7 @@
         class PowerUp {
             constructor(isBig = false) {
                 this.x = width + 20;
-                this.y = random(60, height - 60);
+                this.y = random(60, height - (isMobile ? 210 : 60));
                 this.isBig = isBig;
                 this.r = isBig ? min(35, width * 0.06) : min(20, width * 0.035);
                 this.speed = gameSpeed * (isBig ? 0.6 : 0.8);
@@ -697,7 +810,9 @@
                 let size = this.r * 2 + sin(this.pulse) * (this.isBig ? 12 : 8);
                 
                 if (this.isBig) {
-                    for (let i = 5; i > 0; i--) {
+                    // Fewer glow layers on mobile
+                    let layers = isMobile ? 2 : 5;
+                    for (let i = layers; i > 0; i--) {
                         fill(255, 215, 0, 60 - i * 10);
                         ellipse(this.x, this.y, size + i * 15);
                     }
@@ -717,7 +832,9 @@
                     textSize(this.r * 0.4);
                     text("CLEAR!", this.x, this.y - this.r * 1.5);
                 } else {
-                    for (let i = 3; i > 0; i--) {
+                    // Fewer glow layers on mobile
+                    let layers = isMobile ? 1 : 3;
+                    for (let i = layers; i > 0; i--) {
                         fill(50, 255, 50, 80 - i * 20);
                         ellipse(this.x, this.y, size + i * 10);
                     }
@@ -745,7 +862,7 @@
                 this.x = x;
                 this.y = y;
                 this.r = min(8, width * 0.015);
-                this.speed = min(10, width * 0.02);
+                this.speed = min(12, width * 0.025); // Faster bullets
             }
             
             update() {
@@ -783,18 +900,19 @@
                 this.vy = random(-3, 3);
                 this.life = 255;
                 this.color = col;
+                this.decay = isMobile ? 10 : 5; // Faster decay on mobile
             }
             
             update() {
                 this.x += this.vx;
                 this.y += this.vy;
-                this.life -= 5;
+                this.life -= this.decay;
             }
             
             show() {
                 fill(red(this.color), green(this.color), blue(this.color), this.life);
                 noStroke();
-                ellipse(this.x, this.y, 8);
+                ellipse(this.x, this.y, isMobile ? 6 : 8);
             }
             
             isDead() {
